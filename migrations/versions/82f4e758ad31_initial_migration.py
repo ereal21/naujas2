@@ -42,6 +42,7 @@ def upgrade() -> None:
                     sa.Column('name', sa.String(length=100), nullable=False),
                     sa.Column('price', sa.BigInteger(), nullable=False),
                     sa.Column('description', sa.Text(), nullable=False),
+                    sa.Column('delivery_description', sa.Text(), nullable=True),
                     sa.Column('category_name', sa.String(length=100), nullable=False),
                     sa.ForeignKeyConstraint(['category_name'], ['categories.name'], ),
                     sa.PrimaryKeyConstraint('name'),

@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import os
+import random
 from io import BytesIO
 from urllib.parse import urlparse
 import html
@@ -15,7 +16,7 @@ from bot.database.methods import (
     select_max_role_id, create_user, check_role, check_user,
     get_all_categories, get_all_items, select_bought_items, get_bought_item_info, get_item_info,
     select_item_values_amount, get_user_balance, get_item_value, buy_item, add_bought_item, buy_item_for_balance,
-    select_user_operations, select_user_items, check_user_referrals, start_operation,
+    select_user_operations, select_user_items, start_operation,
     select_unfinished_operations, get_user_referral, finish_operation, update_balance, create_operation,
     bought_items_list, check_value, get_subcategories, get_category_parent, get_user_language, update_user_language,
     get_unfinished_operation
@@ -23,7 +24,7 @@ from bot.database.methods import (
 from bot.utils.files import cleanup_item_file
 from bot.handlers.other import get_bot_user_ids, get_bot_info
 from bot.keyboards import main_menu, categories_list, goods_list, subcategories_list, user_items_list, back, item_info, \
-    profile, rules, payment_menu, close, crypto_choice, crypto_invoice_menu
+    profile, rules, payment_menu, close, crypto_choice, crypto_invoice_menu, blackjack_controls
 from bot.localization import t
 from bot.logger_mesh import logger
 from bot.misc import TgConfig, EnvKeys
@@ -57,6 +58,24 @@ def build_subcategory_description(parent: str, lang: str) -> str:
         lines.append("")
     lines.append(t(lang, 'choose_subcategory'))
     return "\n".join(lines)
+
+
+def blackjack_hand_value(cards: list[int]) -> int:
+    total = sum(cards)
+    aces = cards.count(11)
+    while total > 21 and aces:
+        total -= 10
+        aces -= 1
+    return total
+
+
+def format_blackjack_state(player: list[int], dealer: list[int], hide_dealer: bool = True) -> str:
+    player_text = ", ".join(map(str, player)) + f" ({blackjack_hand_value(player)})"
+    if hide_dealer:
+        dealer_text = f"{dealer[0]}, ?"
+    else:
+        dealer_text = ", ".join(map(str, dealer)) + f" ({blackjack_hand_value(dealer)})"
+    return f"🃏 Blackjack\nYour hand: {player_text}\nDealer: {dealer_text}"
 
 
 
@@ -118,6 +137,125 @@ async def close_callback_handler(call: CallbackQuery):
     bot, user_id = await get_bot_user_ids(call)
     await bot.delete_message(chat_id=call.message.chat.id,
                              message_id=call.message.message_id)
+
+
+async def price_list_callback_handler(call: CallbackQuery):
+    bot, user_id = await get_bot_user_ids(call)
+    TgConfig.STATE[user_id] = None
+    lines = ['📋 Price list']
+    for category in get_all_categories():
+        lines.append(f"\n<b>{category}</b>")
+        for sub in get_subcategories(category):
+            lines.append(f"  {sub}")
+            for item in get_all_items(sub):
+                info = get_item_info(item)
+                lines.append(f"    • {item} ({info['price']:.2f}€)")
+        for item in get_all_items(category):
+            info = get_item_info(item)
+            lines.append(f"  • {item} ({info['price']:.2f}€)")
+    text = '\n'.join(lines)
+    await call.answer()
+    await bot.send_message(call.message.chat.id, text,
+                           parse_mode='HTML', reply_markup=back('back_to_menu'))
+
+
+async def blackjack_callback_handler(call: CallbackQuery):
+    bot, user_id = await get_bot_user_ids(call)
+    TgConfig.STATE[user_id] = 'blackjack_bet'
+    TgConfig.STATE[f'{user_id}_message_id'] = call.message.message_id
+    await bot.edit_message_text('Enter bet (max 2€):',
+                               chat_id=call.message.chat.id,
+                               message_id=call.message.message_id,
+                               reply_markup=back('profile'))
+
+
+async def process_blackjack_bet(message: Message):
+    bot, user_id = await get_bot_user_ids(message)
+    message_id = TgConfig.STATE.get(f'{user_id}_message_id')
+    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    try:
+        bet = int(message.text)
+    except ValueError:
+        await bot.edit_message_text('Invalid bet amount.',
+                                   chat_id=message.chat.id,
+                                   message_id=message_id,
+                                   reply_markup=back('profile'))
+        TgConfig.STATE[user_id] = None
+        return
+    balance = get_user_balance(user_id)
+    if bet <= 0 or bet > 2 or bet > balance:
+        await bot.edit_message_text('Invalid bet amount.',
+                                   chat_id=message.chat.id,
+                                   message_id=message_id,
+                                   reply_markup=back('profile'))
+        TgConfig.STATE[user_id] = None
+        return
+
+    buy_item_for_balance(user_id, bet)
+    deck = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11] * 4
+    random.shuffle(deck)
+    player = [deck.pop(), deck.pop()]
+    dealer = [deck.pop(), deck.pop()]
+    TgConfig.STATE[f'{user_id}_blackjack'] = {
+        'deck': deck,
+        'player': player,
+        'dealer': dealer,
+        'bet': bet
+    }
+    TgConfig.STATE[user_id] = 'blackjack_game'
+    text = format_blackjack_state(player, dealer, hide_dealer=True)
+    await bot.edit_message_text(text,
+                               chat_id=message.chat.id,
+                               message_id=message_id,
+                               reply_markup=blackjack_controls())
+
+
+async def blackjack_move_handler(call: CallbackQuery):
+    bot, user_id = await get_bot_user_ids(call)
+    game = TgConfig.STATE.get(f'{user_id}_blackjack')
+    if not game:
+        await call.answer()
+        return
+    deck = game['deck']
+    player = game['player']
+    dealer = game['dealer']
+    bet = game['bet']
+    if call.data == 'blackjack_hit':
+        player.append(deck.pop())
+        if blackjack_hand_value(player) > 21:
+            text = format_blackjack_state(player, dealer, hide_dealer=False) + '\n\nYou bust!'
+            await bot.edit_message_text(text,
+                                       chat_id=call.message.chat.id,
+                                       message_id=call.message.message_id,
+                                       reply_markup=back('back_to_menu'))
+            TgConfig.STATE.pop(f'{user_id}_blackjack', None)
+            TgConfig.STATE[user_id] = None
+        else:
+            text = format_blackjack_state(player, dealer, hide_dealer=True)
+            await bot.edit_message_text(text,
+                                       chat_id=call.message.chat.id,
+                                       message_id=call.message.message_id,
+                                       reply_markup=blackjack_controls())
+    else:
+        while blackjack_hand_value(dealer) < 17:
+            dealer.append(deck.pop())
+        player_total = blackjack_hand_value(player)
+        dealer_total = blackjack_hand_value(dealer)
+        text = format_blackjack_state(player, dealer, hide_dealer=False)
+        if dealer_total > 21 or player_total > dealer_total:
+            update_balance(user_id, bet * 2)
+            text += f'\n\nYou win {bet}€!'
+        elif player_total == dealer_total:
+            update_balance(user_id, bet)
+            text += '\n\nPush.'
+        else:
+            text += '\n\nDealer wins.'
+        await bot.edit_message_text(text,
+                                   chat_id=call.message.chat.id,
+                                   message_id=call.message.message_id,
+                                   reply_markup=back('back_to_menu'))
+        TgConfig.STATE.pop(f'{user_id}_blackjack', None)
+        TgConfig.STATE[user_id] = None
 
 
 async def shop_callback_handler(call: CallbackQuery):
@@ -268,6 +406,7 @@ async def buy_item_callback_handler(call: CallbackQuery):
     msg = call.message.message_id
     item_info_list = get_item_info(item_name)
     item_price = item_info_list["price"]
+    delivery_desc = item_info_list.get("delivery_description")
     user_balance = get_user_balance(user_id)
 
     if user_balance >= item_price:
@@ -279,12 +418,14 @@ async def buy_item_callback_handler(call: CallbackQuery):
             new_balance = buy_item_for_balance(user_id, item_price)
             if os.path.isfile(value_data['value']):
                 with open(value_data['value'], 'rb') as photo:
+                    caption = f'✅ Item purchased. <b>Balance</b>: <i>{new_balance}</i>€'
+                    if delivery_desc:
+                        caption += f'\n\n{delivery_desc}'
                     await bot.send_photo(
                         chat_id=call.message.chat.id,
                         photo=photo,
-                        caption=f'✅ Item purchased. <b>Balance</b>: <i>{new_balance}</i>€',
-                        parse_mode='HTML',
-                        reply_markup=home_markup(get_user_language(user_id) or 'en')
+                        caption=caption,
+                        parse_mode='HTML'
                     )
                 os.remove(value_data['value'])
                 await bot.edit_message_text(chat_id=call.message.chat.id,
@@ -295,9 +436,12 @@ async def buy_item_callback_handler(call: CallbackQuery):
                 cleanup_item_file(value_data['value'])
 
             else:
+                text = f'✅ Item purchased. <b>Balance</b>: <i>{new_balance}</i>€\n\n{value_data["value"]}'
+                if delivery_desc:
+                    text += f'\n\n{delivery_desc}'
                 await bot.edit_message_text(chat_id=call.message.chat.id,
                                            message_id=msg,
-                                           text=f'✅ Item purchased. <b>Balance</b>: <i>{new_balance}</i>€\n\n{value_data["value"]}',
+                                           text=text,
                                            parse_mode='HTML',
                                            reply_markup=home_markup(get_user_language(user_id) or 'en')
                 )
@@ -415,8 +559,7 @@ async def profile_callback_handler(call: CallbackQuery):
             overall_balance += i
 
     items = select_user_items(user_id)
-    referral = TgConfig.REFERRAL_PERCENT
-    markup = profile(referral, items)
+    markup = profile(items)
     await bot.edit_message_text(text=f"👤 <b>Profile</b> — {user.first_name}\n🆔"
                                      f" <b>ID</b> — <code>{user_id}</code>\n"
                                      f"💳 <b>Balance</b> — <code>{balance}</code> €\n"
@@ -425,22 +568,6 @@ async def profile_callback_handler(call: CallbackQuery):
                                 chat_id=call.message.chat.id,
                                 message_id=call.message.message_id, reply_markup=markup,
                                 parse_mode='HTML')
-
-
-async def referral_callback_handler(call: CallbackQuery):
-    bot, user_id = await get_bot_user_ids(call)
-    TgConfig.STATE[user_id] = None
-    referrals = check_user_referrals(user_id)
-    referral_percent = TgConfig.REFERRAL_PERCENT
-    await bot.edit_message_text(f'💚 Referral system\n'
-                                f'🔗 Link: https://t.me/{await get_bot_info(call)}?start={user_id}\n'
-                                f'Number of referrals: {referrals}\n'
-                                f'📔 The referral system allows you to earn money without investment. '
-                                f'Just share your referral link and you will receive'
-                                f' {referral_percent}% of your referrals top-ups to your bot balance.',
-                                chat_id=call.message.chat.id,
-                                message_id=call.message.message_id,
-                                reply_markup=back('profile'))
 
 
 async def replenish_balance_callback_handler(call: CallbackQuery):
@@ -696,8 +823,12 @@ def register_user_handlers(dp: Dispatcher):
                                        lambda c: c.data == 'rules')
     dp.register_callback_query_handler(replenish_balance_callback_handler,
                                        lambda c: c.data == 'replenish_balance')
-    dp.register_callback_query_handler(referral_callback_handler,
-                                       lambda c: c.data == 'referral_system')
+    dp.register_callback_query_handler(price_list_callback_handler,
+                                       lambda c: c.data == 'price_list')
+    dp.register_callback_query_handler(blackjack_callback_handler,
+                                       lambda c: c.data == 'blackjack')
+    dp.register_callback_query_handler(blackjack_move_handler,
+                                       lambda c: c.data in ('blackjack_hit', 'blackjack_stand'))
     dp.register_callback_query_handler(bought_items_callback_handler,
                                        lambda c: c.data == 'bought_items')
     dp.register_callback_query_handler(back_to_menu_callback_handler,
@@ -740,3 +871,5 @@ def register_user_handlers(dp: Dispatcher):
 
     dp.register_message_handler(process_replenish_balance,
                                 lambda c: TgConfig.STATE.get(c.from_user.id) == 'process_replenish_balance')
+    dp.register_message_handler(process_blackjack_bet,
+                                lambda c: TgConfig.STATE.get(c.from_user.id) == 'blackjack_bet')
