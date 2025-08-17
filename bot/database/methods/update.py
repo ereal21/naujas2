@@ -31,7 +31,8 @@ def buy_item_for_balance(telegram_id: str, summ: int) -> int:
     return Database().session.query(User.balance).filter(User.telegram_id == telegram_id).one()[0]
 
 
-def update_item(item_name: str, new_name: str, new_description: str, new_price: int, new_category_name: str) -> None:
+def update_item(item_name: str, new_name: str, new_description: str, new_price: int,
+                new_category_name: str, new_delivery_description: str | None) -> None:
     Database().session.query(ItemValues).filter(ItemValues.item_name == item_name).update(
         values={ItemValues.item_name: new_name}
     )
@@ -39,7 +40,8 @@ def update_item(item_name: str, new_name: str, new_description: str, new_price: 
         values={Goods.name: new_name,
                 Goods.description: new_description,
                 Goods.price: new_price,
-                Goods.category_name: new_category_name}
+                Goods.category_name: new_category_name,
+                Goods.delivery_description: new_delivery_description}
     )
     Database().session.commit()
 

@@ -22,10 +22,12 @@ def create_user(telegram_id: int, registration_date, referral_id, role: int = 1,
             session.commit()
 
 
-def create_item(item_name: str, item_description: str, item_price: int, category_name: str) -> None:
+def create_item(item_name: str, item_description: str, item_price: int, category_name: str,
+                delivery_description: str | None = None) -> None:
     session = Database().session
     session.add(
-        Goods(name=item_name, description=item_description, price=item_price, category_name=category_name))
+        Goods(name=item_name, description=item_description, price=item_price,
+              category_name=category_name, delivery_description=delivery_description))
     session.commit()
 
 

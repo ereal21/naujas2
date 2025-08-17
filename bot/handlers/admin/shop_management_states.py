@@ -388,6 +388,38 @@ async def check_category_for_add_item(message: Message):
     TgConfig.STATE[f'{user_id}_category'] = category_name
     await bot.edit_message_text(chat_id=message.chat.id,
                                 message_id=message_id,
+                                text='Add product delivery description?',
+                                reply_markup=question_buttons('delivery_desc', 'item-management'))
+
+
+async def delivery_description_callback_handler(call: CallbackQuery):
+    bot, user_id = await get_bot_user_ids(call)
+    message_id = TgConfig.STATE.get(f'{user_id}_message_id')
+    answer = call.data.split('_')[-1]
+    if answer == 'yes':
+        TgConfig.STATE[user_id] = 'create_item_delivery_desc'
+        await bot.edit_message_text(chat_id=call.message.chat.id,
+                                    message_id=message_id,
+                                    text='Enter delivery description:',
+                                    reply_markup=back('item-management'))
+    else:
+        TgConfig.STATE[user_id] = None
+        TgConfig.STATE[f'{user_id}_delivery_desc'] = None
+        await bot.edit_message_text(chat_id=call.message.chat.id,
+                                    message_id=message_id,
+                                    text='Will this item have unlimited goods? '
+                                         '(every user will receive the same copy)',
+                                    reply_markup=question_buttons('infinity', 'item-management'))
+
+
+async def add_delivery_description(message: Message):
+    bot, user_id = await get_bot_user_ids(message)
+    TgConfig.STATE[f'{user_id}_delivery_desc'] = message.text
+    TgConfig.STATE[user_id] = None
+    message_id = TgConfig.STATE.get(f'{user_id}_message_id')
+    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    await bot.edit_message_text(chat_id=message.chat.id,
+                                message_id=message_id,
                                 text='Will this item have unlimited goods? '
                                      '(every user will receive the same copy)',
                                 reply_markup=question_buttons('infinity', 'item-management'))
@@ -435,7 +467,8 @@ async def adding_item(message: Message):
                 values_list = message.text.split(';')
         await bot.delete_message(chat_id=message.chat.id,
                                  message_id=message.message_id)
-        create_item(item_name, item_description, item_price, category_name)
+        delivery_desc = TgConfig.STATE.get(f'{user_id}_delivery_desc')
+        create_item(item_name, item_description, item_price, category_name, delivery_desc)
         for i in values_list:
             add_values_to_item(item_name, i, False)
         group_id = TgConfig.GROUP_ID
@@ -466,7 +499,8 @@ async def adding_item(message: Message):
             value = message.text
         await bot.delete_message(chat_id=message.chat.id,
                                  message_id=message.message_id)
-        create_item(item_name, item_description, item_price, category_name)
+        delivery_desc = TgConfig.STATE.get(f'{user_id}_delivery_desc')
+        create_item(item_name, item_description, item_price, category_name, delivery_desc)
         add_values_to_item(item_name, value, True)
         group_id = TgConfig.GROUP_ID if TgConfig.GROUP_ID != -988765433 else None
         if group_id:
@@ -667,7 +701,8 @@ async def update_item_process(call: CallbackQuery):
     price = TgConfig.STATE.get(f'{user_id}_price')
     if answer[3] == 'no':
         TgConfig.STATE[user_id] = None
-        update_item(item_old_name, item_new_name, item_description, price, category)
+        delivery_desc = check_item(item_old_name).get('delivery_description')
+        update_item(item_old_name, item_new_name, item_description, price, category, delivery_desc)
         await bot.edit_message_text(chat_id=call.message.chat.id,
                                     message_id=message_id,
                                     text='✅ Item updated',
@@ -722,7 +757,8 @@ async def update_item_infinity(message: Message):
         for i in values_list:
             add_values_to_item(item_old_name, i, False)
     TgConfig.STATE[user_id] = None
-    update_item(item_old_name, item_new_name, item_description, price, category)
+    delivery_desc = check_item(item_old_name).get('delivery_description')
+    update_item(item_old_name, item_new_name, item_description, price, category, delivery_desc)
     await bot.edit_message_text(chat_id=message.chat.id,
                                 message_id=message_id,
                                 text='✅ Item updated',
@@ -859,6 +895,10 @@ def register_shop_management(dp: Dispatcher) -> None:
                                 lambda c: TgConfig.STATE.get(c.from_user.id) == 'create_item_price')
     dp.register_message_handler(check_category_for_add_item,
                                 lambda c: TgConfig.STATE.get(c.from_user.id) == 'check_item_category')
+    dp.register_callback_query_handler(delivery_description_callback_handler,
+                                       lambda c: c.data.startswith('delivery_desc_'))
+    dp.register_message_handler(add_delivery_description,
+                                lambda c: TgConfig.STATE.get(c.from_user.id) == 'create_item_delivery_desc')
     dp.register_message_handler(adding_item,
                                 lambda c: TgConfig.STATE.get(c.from_user.id) == 'add_item_value')
     dp.register_message_handler(check_item_name_for_update,

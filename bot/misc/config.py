@@ -7,7 +7,7 @@ class TgConfig(ABC):
     BASKETS: Final = {}
     CHANNEL_URL: Final = 'https://t.me/NBAXSHOP'
     HELPER_URL: Final = '@SugarFromShef'
-    REVIEWS_URL: Final = 'https://t.me/NBAXSHOP_reviews'
+    REVIEWS_URL: Final = 'https://t.me/+-yPLEiJwp-IxYzlk'
     PRICE_LIST_URL: Final = 'https://t.me/NBAXSHOP_price'
     GROUP_ID: Final = -988765433
     REFERRAL_PERCENT = 5
