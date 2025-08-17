@@ -326,6 +326,7 @@ def blackjack_controls() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
+
 def blackjack_bet_menu() -> InlineKeyboardMarkup:
     inline_keyboard = [
         [InlineKeyboardButton('0.5€', callback_data='blackjack_bet_0.5')],
@@ -334,3 +335,4 @@ def blackjack_bet_menu() -> InlineKeyboardMarkup:
         [InlineKeyboardButton('🔙 Go back', callback_data='back_to_menu')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
