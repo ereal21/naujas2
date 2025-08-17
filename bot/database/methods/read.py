@@ -1,7 +1,7 @@
 import datetime
 
 import sqlalchemy
-from sqlalchemy import exc, func
+from sqlalchemy import exc, func, select
 
 from bot.database.models import Database, User, ItemValues, Goods, Categories, Role, BoughtGoods, \
     Operations, UnfinishedOperations
@@ -103,8 +103,14 @@ def get_bought_item_info(item_id: str) -> dict | None:
 
 
 def get_item_info(item_name: str) -> dict | None:
-    result = Database().session.query(Goods).filter(Goods.name == item_name).first()
-    return result.__dict__ if result else None
+    session = Database().session
+    try:
+        result = session.query(Goods).filter(Goods.name == item_name).first()
+        return result.__dict__ if result else None
+    except exc.OperationalError:
+        stmt = select(Goods.name, Goods.price, Goods.description, Goods.category_name).where(Goods.name == item_name)
+        row = session.execute(stmt).first()
+        return dict(row._mapping) if row else None
 
 
 def get_user_balance(telegram_id: int) -> float | None:

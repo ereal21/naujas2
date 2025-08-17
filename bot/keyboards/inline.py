@@ -33,7 +33,7 @@ def main_menu(role: int, reviews: str = None, price: str = None, lang: str = 'en
     if reviews:
         row3.append(InlineKeyboardButton(t(lang, 'reviews'), url=reviews))
     if price:
-        row3.append(InlineKeyboardButton(t(lang, 'price_list'), url=price))
+        row3.append(InlineKeyboardButton(t(lang, 'price_list'), callback_data='price_list'))
     if row3:
         inline_keyboard.append(row3)
 
@@ -128,13 +128,11 @@ def item_info(item_name: str, category_name: str, lang: str) -> InlineKeyboardMa
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
-def profile(referral_percent: int, user_items: int = 0) -> InlineKeyboardMarkup:
+def profile(user_items: int = 0) -> InlineKeyboardMarkup:
     inline_keyboard = [
-        [InlineKeyboardButton('💸 Top up balance', callback_data='replenish_balance')
-         ]
+        [InlineKeyboardButton('💸 Top up balance', callback_data='replenish_balance')]
     ]
-    if referral_percent != 0:
-        inline_keyboard.append([InlineKeyboardButton('🎲 Referral system', callback_data='referral_system')])
+    inline_keyboard.append([InlineKeyboardButton('🃏 Blackjack', callback_data='blackjack')])
     if user_items != 0:
         inline_keyboard.append([InlineKeyboardButton('🎁 Purchased items', callback_data='bought_items')])
     inline_keyboard.append([InlineKeyboardButton('🔙 Back to menu', callback_data='back_to_menu')])
@@ -316,5 +314,23 @@ def question_buttons(question: str, back_data: str) -> InlineKeyboardMarkup:
          ],
         [InlineKeyboardButton('🔙 Go back', callback_data=back_data)
          ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def blackjack_controls() -> InlineKeyboardMarkup:
+    inline_keyboard = [
+        [InlineKeyboardButton('🃏 Hit', callback_data='blackjack_hit'),
+         InlineKeyboardButton('🛑 Stand', callback_data='blackjack_stand')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+
+def blackjack_bet_menu() -> InlineKeyboardMarkup:
+    inline_keyboard = [
+        [InlineKeyboardButton('0.5€', callback_data='blackjack_bet_0.5')],
+        [InlineKeyboardButton('1€', callback_data='blackjack_bet_1')],
+        [InlineKeyboardButton('2€', callback_data='blackjack_bet_2')],
+        [InlineKeyboardButton('🔙 Go back', callback_data='back_to_menu')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)

@@ -108,14 +108,17 @@ class Goods(Database.BASE):
     name = Column(String(100), nullable=False, unique=True, primary_key=True)
     price = Column(BigInteger, nullable=False)
     description = Column(Text, nullable=False)
+    delivery_description = Column(Text, nullable=True)
     category_name = Column(String(100), ForeignKey('categories.name'), nullable=False)
     category = relationship("Categories", back_populates="item")
     values = relationship("ItemValues", back_populates="item")
 
-    def __init__(self, name: str, price: int, description: str, category_name: str):
+    def __init__(self, name: str, price: int, description: str, category_name: str,
+                 delivery_description: str | None = None):
         self.name = name
         self.price = price
         self.description = description
+        self.delivery_description = delivery_description
         self.category_name = category_name
 
 
